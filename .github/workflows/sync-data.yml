@@ -1,0 +1,40 @@
+name: Update durations.json
+
+# 定时镜像 durations.json 到 gh-data 分支，供客户端作为备用数据源
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 下载最新 durations.json
+        run: |
+          curl -sL --max-time 120 \
+            "https://www.totootao.top/alist/d/3-90/mnt/nas/%E8%A7%86%E9%A2%91/durations.json" \
+            -o durations.json
+          python3 -c "
+          import json
+          d = json.load(open('durations.json'))
+          print('条目数:', len(d))
+          "
+
+      - name: 推送到 gh-data 分支
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan gh-data-tmp
+          git rm -rf --cached . > /dev/null
+          git add -f durations.json
+          git commit -m "chore: 更新节目单 $(date +'%Y-%m-%d %H:%M')"
+          git branch -D gh-data 2>/dev/null || true
+          git branch -m gh-data
+          git push -f origin gh-data

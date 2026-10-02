@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF0B0E13</color>
+    <color name="panel">#FF141922</color>
+    <color name="panel_soft">#FF1B212C</color>
+    <color name="divider">#FF232A36</color>
+    <color name="accent">#FFFF4D4F</color>
+    <color name="accent_dim">#66FF4D4F</color>
+    <color name="channel_text">#FFC6CCD6</color>
+    <color name="channel_active_text">#FFFFFFFF</color>
+    <color name="text_primary">#FFF2F5FA</color>
+    <color name="text_secondary">#FF9AA4B2</color>
+    <color name="live_red">#FFFF4D4F</color>
+</resources>
