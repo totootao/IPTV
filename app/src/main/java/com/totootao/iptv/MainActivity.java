@@ -20,7 +20,6 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.media3.common.MediaItem;
 import androidx.media3.ui.AspectRatioFrameLayout;
-import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultDataSource;
@@ -345,12 +344,11 @@ public class MainActivity extends Activity {
     }
 
     private String guessMime(String name) {
-        String n = name.toLowerCase(Locale.US);
-        if (n.endsWith(".mkv")) return MimeTypes.VIDEO_MATROSKA;
-        if (n.endsWith(".ts")) return MimeTypes.VIDEO_MP2T;
-        if (n.endsWith(".mp4") || n.endsWith(".m4v")) return MimeTypes.VIDEO_MP4;
-        if (n.endsWith(".webm")) return MimeTypes.VIDEO_WEBM;
-        if (n.endsWith(".flv")) return MimeTypes.VIDEO_FLV;
+        // 不按扩展名硬编码容器类型：AList 上的 .ts 实为 MP4/mkv 转封装的情况很普遍
+        // （已实测「新白娘子传奇」同一部剧内既有真 TS 集也有 MP4 集，首字节分别为 0x47 / 'ftyp'），
+        // 强制 MIME 会让 ExoPlayer 用错 Extractor 而播放失败。
+        // 返回 null，交给 ExoPlayer 按真实字节嗅探（ProgressiveMediaSource 的 sniff 流程），
+        // TS 走 TsExtractor、MP4/mkv/webm 各自走对应 Extractor，自动适配。
         return null;
     }
 
