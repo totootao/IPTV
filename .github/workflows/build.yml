@@ -32,7 +32,26 @@ jobs:
           java-version: '17'
 
       - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          set -e
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          cd "$SDK_ROOT/cmdline-tools"
+          curl -sSL --retry 3 --max-time 600 \
+            -o cmdline.zip \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q cmdline.zip
+          mv cmdline-tools latest
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "sdk.dir=$SDK_ROOT" > "$GITHUB_WORKSPACE/local.properties"
 
       - name: 设置 Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -91,6 +110,8 @@ jobs:
       - name: 创建 Release
         if: github.event_name == 'push' || inputs.release == 'true'
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: 怀旧剧场直播 ${{ steps.ver.outputs.tag }}
