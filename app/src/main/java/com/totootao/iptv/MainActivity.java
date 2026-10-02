@@ -9,7 +9,6 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -166,13 +165,6 @@ public class MainActivity extends Activity {
                 .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
-        // 触控设备（手机/平板）：轻点画面 显隐 控制栏与节目单，符合移动端视频播放习惯
-        playerView.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (uiVisible) hideUi(); else showUi();
-            }
-            return true;
-        });
         player.setVolume(1f);
         player.setRepeatMode(Player.REPEAT_MODE_OFF);
         player.addListener(new Player.Listener() {

@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 左侧悬浮节目单宽度（手机上接近全宽，作为选台抽屉） -->
+    <!-- 左侧悬浮节目单宽度 -->
     <dimen name="guide_width">340dp</dimen>
-    <!-- 悬浮面板四周留白（手机更紧凑） -->
-    <dimen name="guide_margin">12dp</dimen>
+    <!-- 悬浮面板四周留白 -->
+    <dimen name="guide_margin">20dp</dimen>
     <!-- 悬浮面板圆角 -->
     <dimen name="guide_radius">20dp</dimen>
-    <!-- 上下信息条相对屏幕左缘的留白（手机上信息条铺满，TV 上避开悬浮面板） -->
-    <dimen name="info_margin_start">12dp</dimen>
 </resources>

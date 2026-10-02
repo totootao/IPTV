@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- TV / 大屏：悬浮面板保持 340dp 漂浮在视频左侧 -->
-    <dimen name="guide_width">340dp</dimen>
-    <dimen name="guide_margin">20dp</dimen>
-    <dimen name="guide_radius">20dp</dimen>
-    <!-- TV：上下信息条整体右移，避让左侧悬浮面板 -->
-    <dimen name="info_margin_start">372dp</dimen>
-</resources>
