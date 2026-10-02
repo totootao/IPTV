@@ -44,10 +44,13 @@ public class MainActivity extends Activity {
     private static final long TICK_MS = 1000L;
 
     private ExoPlayer player;
+    private androidx.media3.ui.PlayerView playerView;
     private RecyclerView listView;
     private ChannelAdapter adapter;
     private TextView tvNowPlaying, tvEpisode, tvClock, tvProgress, tvStatus, tvSchedule;
     private View loading, headerProgress;
+    private View guidePanel, playerContainer;
+    private boolean guideActive = true;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -109,6 +112,9 @@ public class MainActivity extends Activity {
 
     private void bindViews() {
         listView = findViewById(R.id.channel_list);
+        playerView = findViewById(R.id.player_view);
+        playerContainer = findViewById(R.id.player_container);
+        guidePanel = findViewById(R.id.guide_panel);
         tvNowPlaying = findViewById(R.id.tv_now_playing);
         tvEpisode = findViewById(R.id.tv_episode);
         tvClock = findViewById(R.id.tv_clock);
@@ -145,6 +151,8 @@ public class MainActivity extends Activity {
                 .setLoadControl(load)
                 .setHandleAudioBecomingNoisy(true)
                 .build();
+        playerView.setPlayer(player);
+        playerView.setUseController(false);
         player.setVolume(1f);
         player.setRepeatMode(Player.REPEAT_MODE_OFF);
         player.addListener(new Player.Listener() {
@@ -170,9 +178,19 @@ public class MainActivity extends Activity {
     private void setupList() {
         adapter = new ChannelAdapter();
         adapter.setOnClick(this::switchChannel);
+        adapter.setFocusSink(() -> setGuideActive(true));
         listView.setLayoutManager(new LinearLayoutManager(this, RecyclerView.VERTICAL, false));
         listView.setAdapter(adapter);
         listView.setItemAnimator(null);
+        listView.setFocusable(true);
+        listView.requestFocus();
+    }
+
+    /** 切换悬浮面板的高亮状态：聚焦时完全显示，失焦看视频时半透明淡出 */
+    private void setGuideActive(boolean active) {
+        if (guideActive == active) return;
+        guideActive = active;
+        guidePanel.animate().alpha(active ? 1f : 0.4f).setDuration(220).start();
     }
 
     private void applyLibrary(Channel.Library lib, String lastChannel, boolean fromCache) {
@@ -333,8 +351,26 @@ public class MainActivity extends Activity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            // 左键聚焦列表，便于遥控器操作
-            listView.requestFocus();
+            // 左键：点亮悬浮面板并把焦点交回列表
+            if (!guideActive) {
+                setGuideActive(true);
+                listView.requestFocus();
+                return true;
+            }
+            if (listView.findFocus() == null) {
+                listView.requestFocus();
+                return true;
+            }
+            return super.onKeyDown(keyCode, event);
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            // 右键：收起面板，专注看视频（再按左恢复）
+            if (guideActive) {
+                setGuideActive(false);
+                playerContainer.requestFocus();
+                return true;
+            }
+            return super.onKeyDown(keyCode, event);
         }
         return super.onKeyDown(keyCode, event);
     }

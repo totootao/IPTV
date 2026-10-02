@@ -11,4 +11,14 @@
     <color name="text_primary">#FFF2F5FA</color>
     <color name="text_secondary">#FF9AA4B2</color>
     <color name="live_red">#FFFF4D4F</color>
+
+    <!-- 悬浮面板：左实右透，营造漂浮融入视频的渐变 -->
+    <color name="guide_start">#F0161C28</color>
+    <color name="guide_end">#D6141922</color>
+    <!-- 列表项选中/聚焦底色 -->
+    <color name="sel_tint">#26FF4D4F</color>
+    <color name="focus_tint">#1DFFFFFF</color>
+    <color name="transparent">#00000000</color>
+    <!-- 通用药丸底 -->
+    <color name="chip_bg">#26FFFFFF</color>
 </resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 左侧悬浮节目单宽度 -->
+    <dimen name="guide_width">340dp</dimen>
+    <!-- 悬浮面板四周留白 -->
+    <dimen name="guide_margin">20dp</dimen>
+    <!-- 悬浮面板圆角 -->
+    <dimen name="guide_radius">20dp</dimen>
+</resources>
