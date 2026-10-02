@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -165,6 +166,13 @@ public class MainActivity extends Activity {
                 .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
+        // 手机触摸习惯：轻点播放区切换控制栏（列表/信息条）显隐
+        playerView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                toggleUiVisibility();
+            }
+            return true;
+        });
         player.setVolume(1f);
         player.setRepeatMode(Player.REPEAT_MODE_OFF);
         player.addListener(new Player.Listener() {
@@ -203,6 +211,14 @@ public class MainActivity extends Activity {
      * 露出全部 UI（悬浮面板 + 上下信息条），并在无操作 UI_TIMEOUT 后自动隐去，
      * 让视频独占全屏——符合电视直播 App 的沉浸式习惯。
      */
+    private void toggleUiVisibility() {
+        if (uiVisible) {
+            hideUi();
+        } else {
+            showUi();
+        }
+    }
+
     private void showUi() {
         uiVisible = true;
         handler.removeCallbacks(hideUi);
