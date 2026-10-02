@@ -20,6 +20,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.media3.common.MediaItem;
 import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultDataSource;
@@ -70,6 +71,13 @@ public class MainActivity extends Activity {
     private boolean prepared = false;
 
     private ChannelRepository repo;
+
+    /** 复用的 HTTP 客户端（用于播放与首字节嗅探容器类型） */
+    private okhttp3.OkHttpClient httpClient;
+    /** URL -> 真实容器 MIME 的嗅探缓存，避免每次切集重复请求 */
+    private final java.util.Map<String, String> mimeCache = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 切集序号令牌，丢弃过期的异步嗅探结果 */
+    private long prepareSeq = 0;
 
     /** 每秒刷新：既要更新播放位置，也要在主界面刷新时钟 */
     private final Runnable ticker = new Runnable() {
@@ -143,11 +151,11 @@ public class MainActivity extends Activity {
     }
 
     private void buildPlayer() {
-        OkHttpClient ok = new OkHttpClient.Builder()
+        httpClient = new OkHttpClient.Builder()
                 .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
-        OkHttpDataSource.Factory http = new OkHttpDataSource.Factory(ok)
+        OkHttpDataSource.Factory http = new OkHttpDataSource.Factory(httpClient)
                 .setUserAgent("IPTV/1.0 (Android TV)")
                 .setDefaultRequestProperties(new java.util.HashMap<String, String>() {{
                     put("Accept", "*/*");
@@ -321,35 +329,92 @@ public class MainActivity extends Activity {
     /**
      * 定位到「现在」应有的位置。
      * restart=true 时强制重新 seek（用于错误恢复）。
+     * 实际播放前会先读首字节嗅探真实容器类型，避免被 .ts 扩展名/服务器的
+     * video/MP2T Content-Type 误导而用错 Extractor（已实测 AList 上大量「.ts」实为 MP4）。
      */
     private void syncToNow(Channel ch, boolean restart) {
         Channel.Position pos = Channel.positionAt(ch, System.currentTimeMillis());
         pendingPos = pos;
         bindLiveInfo(pos);
-
-        MediaItem item = new MediaItem.Builder()
-                .setUri(pos.episode.url)
-                .setMimeType(guessMime(pos.episode.name))
-                .build();
-
-        if (restart || player.getMediaItemCount() == 0) {
-            player.setMediaItem(item, pos.offsetMs);
-            player.prepare();
-            player.setPlayWhenReady(true);
-        } else {
-            player.setMediaItem(item, pos.offsetMs);
-            player.prepare();
-            player.setPlayWhenReady(true);
-        }
+        prepareWithSniff(ch, pos.episode, pos.offsetMs);
     }
 
-    private String guessMime(String name) {
-        // 不按扩展名硬编码容器类型：AList 上的 .ts 实为 MP4/mkv 转封装的情况很普遍
-        // （已实测「新白娘子传奇」同一部剧内既有真 TS 集也有 MP4 集，首字节分别为 0x47 / 'ftyp'），
-        // 强制 MIME 会让 ExoPlayer 用错 Extractor 而播放失败。
-        // 返回 null，交给 ExoPlayer 按真实字节嗅探（ProgressiveMediaSource 的 sniff 流程），
-        // TS 走 TsExtractor、MP4/mkv/webm 各自走对应 Extractor，自动适配。
+    /** 先嗅探真实容器 MIME，再在主线程真正挂载播放（带切集令牌防止竞态） */
+    private void prepareWithSniff(Channel ch, Channel.Episode ep, long offsetMs) {
+        String cached = mimeCache.get(ep.url);
+        if (cached != null) {
+            doPrepare(ch, ep, offsetMs, cached.isEmpty() ? null : cached);
+            return;
+        }
+        prepared = false;
+        loading.setVisibility(View.VISIBLE);
+        final long mySeq = ++prepareSeq;
+        okhttp3.Request req = new okhttp3.Request.Builder()
+                .url(ep.url)
+                .header("Range", "bytes=0-375")   // 取前 376 字节足矣判断容器
+                .build();
+        httpClient.newCall(req).enqueue(new okhttp3.Callback() {
+            @Override
+            public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                mimeCache.put(ep.url, "");
+                if (mySeq == prepareSeq) runOnUiThread(() -> doPrepare(ch, ep, offsetMs, null));
+            }
+
+            @Override
+            public void onResponse(okhttp3.Call call, okhttp3.Response resp) {
+                String mime = null;
+                try {
+                    byte[] head = resp.body() != null ? resp.body().bytes() : null;
+                    if (head != null && head.length > 0) mime = detectMimeFromHead(head);
+                } catch (Exception ignore) {
+                    // 嗅探失败则回退交给 ExoPlayer 自行处理
+                } finally {
+                    resp.close();
+                }
+                mimeCache.put(ep.url, mime == null ? "" : mime);
+                final String m = mime;
+                if (mySeq == prepareSeq) runOnUiThread(() -> doPrepare(ch, ep, offsetMs, m));
+            }
+        });
+    }
+
+    /** 根据首字节魔数判断真实容器类型（不信任扩展名） */
+    private String detectMimeFromHead(byte[] h) {
+        if (h.length >= 12) {
+            // ISO BMFF / MP4 : box size + 'ftyp'
+            if (h[4] == 'f' && h[5] == 't' && h[6] == 'y' && h[7] == 'p') return MimeTypes.VIDEO_MP4;
+            // EBML : Matroska / WebM
+            if (h[0] == (byte) 0x1a && h[1] == (byte) 0x45 && h[2] == (byte) 0xdf && h[3] == (byte) 0xa3)
+                return MimeTypes.VIDEO_MATROSKA;
+        }
+        if (h.length >= 3 && h[0] == 'F' && h[1] == 'L' && h[2] == 'V') return MimeTypes.VIDEO_FLV;
+        // MPEG-TS : 同步字节 0x47 且按 188 字节对齐
+        if (h.length >= 4 && h[0] == (byte) 0x47) {
+            boolean ts = true;
+            for (int off = 188; off < h.length; off += 188) {
+                if (h[off] != (byte) 0x47) { ts = false; break; }
+            }
+            if (ts) return MimeTypes.VIDEO_MP2T;
+        }
         return null;
+    }
+
+    /** 主线程：用正确的 MIME 挂载并播放 */
+    private void doPrepare(Channel ch, Channel.Episode ep, long offsetMs, String mime) {
+        current = ch;
+        repo.setLastChannel(ch.name);
+        adapter.setActive(ch);
+        prepared = false;
+        loading.setVisibility(View.VISIBLE);
+        Channel.Position p = new Channel.Position(ch, ch.episodes.indexOf(ep), ep,
+                offsetMs, ep.durationMs - offsetMs, 0, System.currentTimeMillis());
+        pendingPos = p;
+        bindLiveInfo(p);
+        MediaItem.Builder mb = new MediaItem.Builder().setUri(ep.url);
+        if (mime != null) mb.setMimeType(mime);
+        player.setMediaItem(mb.build(), offsetMs);
+        player.prepare();
+        player.setPlayWhenReady(true);
     }
 
     /** 刷新右下角/底部的直播信息 */
