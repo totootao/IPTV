@@ -18,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.MediaItem;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -231,6 +232,21 @@ public class MainActivity extends Activity {
         guidePanel.setAlpha(guideActive ? 1f : 0.4f);
     }
 
+    /**
+     * 切换画面比例：原比例(fit，不裁切有黑边) <-> 铺满(zoom，裁切填满)。
+     * 默认按视频原比例播放。
+     */
+    private void toggleAspect() {
+        if (playerView == null) return;
+        if (playerView.getResizeMode() == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+            Toast.makeText(this, "画面：铺满", Toast.LENGTH_SHORT).show();
+        } else {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            Toast.makeText(this, "画面：原比例", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     /** 列表项获焦 / 左右键切换时，调整面板亮起状态 */
     private void setGuideActive(boolean active) {
         guideActive = active;
@@ -413,9 +429,16 @@ public class MainActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                // 任意导航键都先唤出 UI，再交给默认逻辑
+                showUi();
+                return super.onKeyDown(keyCode, event);
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                // 任意导航/确认键都先唤出 UI，再交给默认逻辑
+                // 沉浸（UI 已隐藏）时按 OK 切换 原比例 / 铺满；否则先唤出 UI
+                if (!uiVisible) {
+                    toggleAspect();
+                    return true;
+                }
                 showUi();
                 return super.onKeyDown(keyCode, event);
             default:
@@ -436,7 +459,7 @@ public class MainActivity extends Activity {
     protected void onStop() {
         super.onStop();
         handler.removeCallbacks(ticker);
-        if (player != null) player.setPlayWhenReady(false);
+        // 后台播放：不暂停 ExoPlayer，回到桌面后音频继续播，回前台自动续上画面
     }
 
     @Override
