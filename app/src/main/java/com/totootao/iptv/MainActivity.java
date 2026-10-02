@@ -69,6 +69,8 @@ public class MainActivity extends Activity {
     private Channel current;
     private Channel.Position pendingPos;
     private boolean prepared = false;
+    /** 同一部剧连续源失败计数，超过阈值则整体跳到下一部剧 */
+    private int failStreak = 0;
 
     private ChannelRepository repo;
 
@@ -146,7 +148,7 @@ public class MainActivity extends Activity {
     private void buildPlayer() {
         OkHttpClient ok = new OkHttpClient.Builder()
                 .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
         OkHttpDataSource.Factory http = new OkHttpDataSource.Factory(ok)
                 .setUserAgent("IPTV/1.0 (Android TV)")
@@ -178,17 +180,23 @@ public class MainActivity extends Activity {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                Log.w(ChannelRepository.TAG, "播放错误", error);
-                // 单集播完/出错时，跳回该剧当前时间对应的位置（模拟直播不间断）
-                handler.postDelayed(() -> {
-                    if (current != null) syncToNow(current, true);
-                }, 2000);
+                Log.w(ChannelRepository.TAG, "播放错误 code=" + error.errorCode, error);
+                if (isSourceUnavailable(error)) {
+                    // 源 404/500/连接失败/解析失败：跳过坏源，避免对同一个坏源死循环重试
+                    handler.postDelayed(() -> skipBadSource(), 1500);
+                } else {
+                    // 其他（解码异常等）：按直播逻辑跳回当前时间位置重试
+                    handler.postDelayed(() -> {
+                        if (current != null) syncToNow(current, true);
+                    }, 2000);
+                }
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     prepared = true;
+                    failStreak = 0;   // 成功起播即清零连续失败计数
                     loading.setVisibility(View.GONE);
                     showUi();   // 起播后先露出信息，随后自动隐去进入沉浸模式
                 }
@@ -352,6 +360,75 @@ public class MainActivity extends Activity {
         if (n.endsWith(".webm")) return MimeTypes.VIDEO_WEBM;
         if (n.endsWith(".flv")) return MimeTypes.VIDEO_FLV;
         return null;
+    }
+
+    /** 判断是否为「数据源本身不可用」类错误（应跳过坏源而非原地重试） */
+    private boolean isSourceUnavailable(PlaybackException e) {
+        switch (e.errorCode) {
+            case PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS:
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
+            case PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE:
+            case PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED:
+            case PlaybackException.ERROR_CODE_REMOTE_ERROR:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** 当前源不可用时：先跳到该剧下一集，连续失败过多则整体跳到下一部剧 */
+    private void skipBadSource() {
+        if (current == null || library == null) return;
+        Channel.Position pos = Channel.positionAt(current, System.currentTimeMillis());
+        int next = pos.index + 1;
+        if (next < current.episodes.size() && failStreak < 3) {
+            failStreak++;
+            playFromIndex(current, next);
+            toast("该集源不可用，已切到第 " + (next + 1) + " 集");
+        } else {
+            failStreak = 0;
+            toast("《" + current.name + "》多个源不可用，已切换到下一部剧");
+            switchToNextChannel();
+        }
+    }
+
+    /** 定位并播放某剧的指定集（保持直播感：用当前时刻在该集内的落点） */
+    private void playFromIndex(Channel ch, int index) {
+        Channel.Episode ep = ch.episodes.get(index);
+        long cycle = Math.floorMod(System.currentTimeMillis(), ch.totalMs);
+        long offset = (cycle >= ep.startMs && cycle < ep.startMs + ep.durationMs)
+                ? (cycle - ep.startMs) : 0;
+        current = ch;
+        repo.setLastChannel(ch.name);
+        adapter.setActive(ch);
+        prepared = false;
+        loading.setVisibility(View.VISIBLE);
+        Channel.Position p = new Channel.Position(ch, index, ep, offset,
+                ep.durationMs - offset, 0, System.currentTimeMillis());
+        pendingPos = p;
+        bindLiveInfo(p);
+        MediaItem item = new MediaItem.Builder()
+                .setUri(ep.url)
+                .setMimeType(guessMime(ep.name))
+                .build();
+        player.setMediaItem(item, offset);
+        player.prepare();
+        player.setPlayWhenReady(true);
+    }
+
+    /** 整部剧源都不可用时，循环切换到下一部剧 */
+    private void switchToNextChannel() {
+        if (library == null || current == null) return;
+        int idx = library.channels.indexOf(current);
+        if (idx < 0) idx = 0;
+        int next = (idx + 1) % library.channels.size();
+        if (next == idx) return;
+        switchChannel(library.channels.get(next));
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
     /** 刷新右下角/底部的直播信息 */
