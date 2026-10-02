@@ -28,6 +28,7 @@
 
         <!-- 顶部信息（避开左侧悬浮面板，整体右移） -->
         <LinearLayout
+            android:id="@+id/info_top"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="top"
@@ -96,6 +97,7 @@
 
         <!-- 底部信息（同样右移） -->
         <LinearLayout
+            android:id="@+id/info_bottom"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"

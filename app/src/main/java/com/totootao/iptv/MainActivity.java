@@ -50,7 +50,16 @@ public class MainActivity extends Activity {
     private TextView tvNowPlaying, tvEpisode, tvClock, tvProgress, tvStatus, tvSchedule;
     private View loading, headerProgress;
     private View guidePanel, playerContainer;
+    private View infoTop, infoBottom;
     private boolean guideActive = true;
+    private boolean uiVisible = true;
+    private static final long UI_TIMEOUT = 4500L;
+    private final Runnable hideUi = new Runnable() {
+        @Override
+        public void run() {
+            hideUi();
+        }
+    };
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -115,6 +124,8 @@ public class MainActivity extends Activity {
         playerView = findViewById(R.id.player_view);
         playerContainer = findViewById(R.id.player_container);
         guidePanel = findViewById(R.id.guide_panel);
+        infoTop = findViewById(R.id.info_top);
+        infoBottom = findViewById(R.id.info_bottom);
         tvNowPlaying = findViewById(R.id.tv_now_playing);
         tvEpisode = findViewById(R.id.tv_episode);
         tvClock = findViewById(R.id.tv_clock);
@@ -170,6 +181,7 @@ public class MainActivity extends Activity {
                 if (state == Player.STATE_READY) {
                     prepared = true;
                     loading.setVisibility(View.GONE);
+                    showUi();   // 起播后先露出信息，随后自动隐去进入沉浸模式
                 }
             }
         });
@@ -186,11 +198,49 @@ public class MainActivity extends Activity {
         listView.requestFocus();
     }
 
-    /** 切换悬浮面板的高亮状态：聚焦时完全显示，失焦看视频时半透明淡出 */
+    /**
+     * 露出全部 UI（悬浮面板 + 上下信息条），并在无操作 UI_TIMEOUT 后自动隐去，
+     * 让视频独占全屏——符合电视直播 App 的沉浸式习惯。
+     */
+    private void showUi() {
+        uiVisible = true;
+        handler.removeCallbacks(hideUi);
+        guidePanel.setVisibility(View.VISIBLE);
+        infoTop.setVisibility(View.VISIBLE);
+        infoBottom.setVisibility(View.VISIBLE);
+        applyGuideAppearance();
+        infoTop.animate().alpha(1f).setDuration(160).start();
+        infoBottom.animate().alpha(1f).setDuration(160).start();
+        handler.postDelayed(hideUi, UI_TIMEOUT);
+    }
+
+    /** 进入沉浸模式：面板与信息条淡出隐藏 */
+    private void hideUi() {
+        if (!uiVisible) return;
+        uiVisible = false;
+        guidePanel.animate().alpha(0f).setDuration(280)
+                .withEndAction(() -> guidePanel.setVisibility(View.INVISIBLE)).start();
+        infoTop.animate().alpha(0f).setDuration(220)
+                .withEndAction(() -> infoTop.setVisibility(View.INVISIBLE)).start();
+        infoBottom.animate().alpha(0f).setDuration(220)
+                .withEndAction(() -> infoBottom.setVisibility(View.INVISIBLE)).start();
+    }
+
+    /** 悬浮面板外观：聚焦时全亮，看视频时半透明 */
+    private void applyGuideAppearance() {
+        guidePanel.setAlpha(guideActive ? 1f : 0.4f);
+    }
+
+    /** 列表项获焦 / 左右键切换时，调整面板亮起状态 */
     private void setGuideActive(boolean active) {
-        if (guideActive == active) return;
         guideActive = active;
-        guidePanel.animate().alpha(active ? 1f : 0.4f).setDuration(220).start();
+        if (uiVisible) {
+            applyGuideAppearance();
+            handler.removeCallbacks(hideUi);
+            handler.postDelayed(hideUi, UI_TIMEOUT);
+        } else {
+            showUi();
+        }
     }
 
     private void applyLibrary(Channel.Library lib, String lastChannel, boolean fromCache) {
@@ -350,29 +400,28 @@ public class MainActivity extends Activity {
             reloadData();
             return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            // 左键：点亮悬浮面板并把焦点交回列表
-            if (!guideActive) {
-                setGuideActive(true);
-                listView.requestFocus();
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                // 左：唤出悬浮频道列表并聚焦
+                showUi();
+                if (listView.findFocus() == null) listView.requestFocus();
                 return true;
-            }
-            if (listView.findFocus() == null) {
-                listView.requestFocus();
-                return true;
-            }
-            return super.onKeyDown(keyCode, event);
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            // 右键：收起面板，专注看视频（再按左恢复）
-            if (guideActive) {
-                setGuideActive(false);
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                // 右：彻底进入沉浸看视频模式
+                hideUi();
                 playerContainer.requestFocus();
                 return true;
-            }
-            return super.onKeyDown(keyCode, event);
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                // 任意导航/确认键都先唤出 UI，再交给默认逻辑
+                showUi();
+                return super.onKeyDown(keyCode, event);
+            default:
+                showUi();
+                return super.onKeyDown(keyCode, event);
         }
-        return super.onKeyDown(keyCode, event);
     }
 
     @Override
