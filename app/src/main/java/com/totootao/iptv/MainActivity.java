@@ -201,14 +201,32 @@ public class MainActivity extends Activity {
                 Log.w(ChannelRepository.TAG, "播放错误", error);
                 failStreak++;
                 loading.setVisibility(View.VISIBLE);
-                // 出错不再静默转圈：把错误码亮出来，便于定位（如 IO 源 500、网络失败等）
-                loadingText.setText("起流失败，正在重试…（错误码 " + error.errorCode + "）");
-                // 单集播完/出错时，跳回该剧当前时间对应的位置（模拟直播不间断），
+                // 出错不再静默转圈：错误码 + 底层异常链直接显示，便于定位
+                loadingText.setText("起流失败，正在重试…（错误码 " + error.errorCode + "）\n"
+                        + causeChain(error));
+                // 清空连接池，避免重试时复用被服务端关闭的陈旧 keep-alive 连接
+                try { httpClient.connectionPool().evictAll(); } catch (Exception ignore) {}
                 // 连续失败则拉长重试间隔，避免高频死循环
                 long delay = Math.min(2000L * failStreak, 10000L);
                 handler.postDelayed(() -> {
                     if (current != null) syncToNow(current, true);
                 }, delay);
+            }
+
+            /** 提取底层异常链（类名+消息，截断），用于屏幕诊断 */
+            private String causeChain(PlaybackException error) {
+                StringBuilder sb = new StringBuilder();
+                Throwable c = error.getCause();
+                int depth = 0;
+                while (c != null && depth < 3) {
+                    String msg = String.valueOf(c.getMessage());
+                    if (msg.length() > 110) msg = msg.substring(0, 110) + "…";
+                    if (depth > 0) sb.append(" ← ");
+                    sb.append(c.getClass().getSimpleName()).append(": ").append(msg);
+                    c = c.getCause();
+                    depth++;
+                }
+                return sb.length() == 0 ? String.valueOf(error.getMessage()) : sb.toString();
             }
 
             @Override

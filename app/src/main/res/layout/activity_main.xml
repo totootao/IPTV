@@ -174,12 +174,16 @@
 
             <TextView
                 android:id="@+id/loading_text"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
+                android:layout_marginStart="40dp"
+                android:layout_marginEnd="40dp"
+                android:gravity="center"
+                android:maxLines="5"
                 android:text="正在缓冲直播流…"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp" />
+                android:textSize="13sp" />
         </LinearLayout>
     </FrameLayout>
 
