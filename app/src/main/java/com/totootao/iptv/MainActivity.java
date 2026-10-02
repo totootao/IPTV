@@ -27,7 +27,10 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -51,6 +54,8 @@ public class MainActivity extends Activity {
     private ChannelAdapter adapter;
     private TextView tvNowPlaying, tvEpisode, tvClock, tvProgress, tvStatus, tvSchedule;
     private View loading, headerProgress;
+    private TextView loadingText;
+    private int failStreak = 0;
     private View guidePanel, playerContainer;
     private View infoTop, infoBottom;
     private boolean guideActive = true;
@@ -142,6 +147,7 @@ public class MainActivity extends Activity {
         tvStatus = findViewById(R.id.tv_status);
         tvSchedule = findViewById(R.id.tv_schedule);
         loading = findViewById(R.id.loading);
+        loadingText = findViewById(R.id.loading_text);
         headerProgress = findViewById(R.id.header_progress);
 
         ImageButton btnReload = findViewById(R.id.btn_reload);
@@ -163,12 +169,19 @@ public class MainActivity extends Activity {
         DefaultDataSource.Factory ds = new DefaultDataSource.Factory(this, http);
 
         DefaultLoadControl load = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(20000, 60000, 2500, 5000)
+                .setBufferDurationsMs(60000, 120000, 2500, 5000)
+                .setBackBuffer(60000, true)
                 .build();
 
+        // TS 无索引：开启恒定码率 seek（免去先读文件尾部算时长），并加大 PTS 搜索窗口
+        DefaultExtractorsFactory extractors = new DefaultExtractorsFactory()
+                .setConstantBitrateSeekingEnabled(true)
+                .setTsExtractorTimestampSearchBytes(3_000_000);
+
         player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(ds))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(ds, extractors))
                 .setLoadControl(load)
+                .setSeekParameters(new SeekParameters(45_000_000L, 2_000_000L)) // 允许回退到 45s 内的前一关键帧，减少前向扫描
                 .setHandleAudioBecomingNoisy(true)
                 .build();
         playerView.setPlayer(player);
@@ -186,16 +199,24 @@ public class MainActivity extends Activity {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.w(ChannelRepository.TAG, "播放错误", error);
-                // 单集播完/出错时，跳回该剧当前时间对应的位置（模拟直播不间断）
+                failStreak++;
+                loading.setVisibility(View.VISIBLE);
+                // 出错不再静默转圈：把错误码亮出来，便于定位（如 IO 源 500、网络失败等）
+                loadingText.setText("起流失败，正在重试…（错误码 " + error.errorCode + "）");
+                // 单集播完/出错时，跳回该剧当前时间对应的位置（模拟直播不间断），
+                // 连续失败则拉长重试间隔，避免高频死循环
+                long delay = Math.min(2000L * failStreak, 10000L);
                 handler.postDelayed(() -> {
                     if (current != null) syncToNow(current, true);
-                }, 2000);
+                }, delay);
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     prepared = true;
+                    failStreak = 0;
+                    loadingText.setText("正在缓冲直播流…");
                     loading.setVisibility(View.GONE);
                     showUi();   // 起播后先露出信息，随后自动隐去进入沉浸模式
                 }
