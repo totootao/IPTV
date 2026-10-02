@@ -4,11 +4,11 @@ plugins {
 
 android {
     namespace 'com.totootao.iptv'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.totootao.iptv"
-        minSdk 21
+        minSdk 23
         targetSdk 34
         versionCode 1
         versionName "1.0"
@@ -59,10 +59,10 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
 
     // Media3 ExoPlayer
-    implementation 'androidx.media3:media3-exoplayer:1.6.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.6.1'
-    implementation 'androidx.media3:media3-ui:1.6.1'
-    implementation 'androidx.media3:media3-datasource-okhttp:1.6.1'
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+    implementation 'androidx.media3:media3-ui:1.11.1'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.11.1'
 
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }
